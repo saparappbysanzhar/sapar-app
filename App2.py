@@ -3,10 +3,10 @@ import random
 import json
 import os
 from twilio.rest import Client
-import streamlit as st
 
-TWILIO_ACCOUNT_SID = st.secrets["TWILIO_ACCOUNT_SID"]
-TWILIO_AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
+# безопасный доступ к secrets
+TWILIO_ACCOUNT_SID = st.secrets.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = st.secrets.get("TWILIO_AUTH_TOKEN", "")
 
 # =========================
 # REGIONS
@@ -26,6 +26,10 @@ KZ_REGIONS = [
 # =========================
 def send_otp(phone, otp):
     try:
+        if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
+            st.error("Twilio secrets не настроены")
+            return False
+
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
         client.messages.create(
             body=f"Ваш код: {otp}",
@@ -33,6 +37,7 @@ def send_otp(phone, otp):
             to=phone
         )
         return True
+
     except Exception as e:
         st.error(f"SMS ошибка: {e}")
         return False
