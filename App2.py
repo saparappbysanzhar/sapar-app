@@ -4,9 +4,26 @@ import json
 import os
 from twilio.rest import Client
 
-# безопасный доступ к secrets
-TWILIO_ACCOUNT_SID = st.secrets.get("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = st.secrets.get("TWILIO_AUTH_TOKEN", "")
+# =========================
+# CONFIG
+# =========================
+st.set_page_config(
+    page_title="Sapar",
+    page_icon="🚇",
+    layout="wide"
+)
+
+# =========================
+# TWILIO SAFE MODE
+# =========================
+def get_twilio_client():
+    sid = st.secrets.get("TWILIO_ACCOUNT_SID")
+    token = st.secrets.get("TWILIO_AUTH_TOKEN")
+
+    if not sid or not token:
+        return None
+
+    return Client(sid, token)
 
 # =========================
 # REGIONS
@@ -26,11 +43,13 @@ KZ_REGIONS = [
 # =========================
 def send_otp(phone, otp):
     try:
-        if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN:
-            st.error("Twilio secrets не настроены")
-            return False
+        client = get_twilio_client()
 
-        client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        if client is None:
+            st.warning("Twilio не настроен (dev mode)")
+            st.info(f"КОД ДЛЯ ТЕСТА: {otp}")
+            return True
+
         client.messages.create(
             body=f"Ваш код: {otp}",
             from_='+16812972877',
@@ -41,6 +60,7 @@ def send_otp(phone, otp):
     except Exception as e:
         st.error(f"SMS ошибка: {e}")
         return False
+
 
 def generate_otp():
     return str(random.randint(100000, 999999))
@@ -53,26 +73,26 @@ def load_users():
         return {}
     try:
         with open("users.json", "r") as f:
-            return json.load(f)
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
     except:
         return {}
 
-def save_users(users):
-    with open("users.json", "w") as f:
-        json.dump(users, f)
 
-# =========================
-# SYNC
-# =========================
+def save_users(users):
+    try:
+        with open("users.json", "w") as f:
+            json.dump(users, f)
+    except Exception as e:
+        st.error(f"DB error: {e}")
+
+
 file_users = load_users()
 
 if "users" not in st.session_state:
     st.session_state.users = file_users
 else:
-    if not os.path.exists("users.json"):
-        st.session_state.users = {}
-    else:
-        st.session_state.users = file_users
+    st.session_state.users = load_users()
 
 # =========================
 # INIT STATE
@@ -94,13 +114,15 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
+
 def reset_reg():
     st.session_state.reg_step = 1
     st.session_state.otp = None
     st.session_state.temp_phone = None
     st.session_state.temp_password = None
 
-st.title("🚇 Sapar")
+
+st.title("🚇 Sapar App")
 
 # ======================================================
 # AUTH
@@ -114,7 +136,7 @@ if not st.session_state.logged_in:
         phone = st.text_input("Номер телефона", key="login_phone")
         password = st.text_input("Пароль", type="password", key="login_pass")
 
-        if st.button("Войти", key="login_btn", disabled=not (phone and password)):
+        if st.button("Войти", disabled=not (phone and password)):
             user = st.session_state.users.get(phone)
             if user and user["password"] == password:
                 st.session_state.logged_in = True
@@ -123,15 +145,13 @@ if not st.session_state.logged_in:
             else:
                 st.error("Неверный номер или пароль")
 
-        st.markdown("<small><u>Забыли пароль?</u></small>", unsafe_allow_html=True)
-
-        if st.button("Восстановить пароль", key="forgot_start"):
+        if st.button("Восстановить пароль"):
             st.session_state.forgot_step = 1
 
         if st.session_state.forgot_step == 1:
             fp_phone = st.text_input("Введите номер", key="fp_phone")
 
-            if st.button("Отправить код", key="forgot_send_code"):
+            if st.button("Отправить код"):
                 if fp_phone in st.session_state.users:
                     otp = generate_otp()
                     st.session_state.forgot_otp = otp
@@ -142,19 +162,19 @@ if not st.session_state.logged_in:
                     st.error("Пользователь не найден")
 
         elif st.session_state.forgot_step == 2:
-            code = st.text_input("SMS код", key="forgot_code")
+            code = st.text_input("SMS код")
 
-            if st.button("Проверить", key="forgot_verify"):
+            if st.button("Проверить"):
                 if code == st.session_state.forgot_otp:
                     st.session_state.forgot_step = 3
                 else:
                     st.error("Неверный код")
 
         elif st.session_state.forgot_step == 3:
-            p1 = st.text_input("Новый пароль", type="password", key="forgot_p1")
-            p2 = st.text_input("Повторите пароль", type="password", key="forgot_p2")
+            p1 = st.text_input("Новый пароль", type="password")
+            p2 = st.text_input("Повторите пароль", type="password")
 
-            if st.button("Сохранить", key="forgot_save"):
+            if st.button("Сохранить"):
                 if p1 == p2:
                     phone = st.session_state.forgot_phone
                     st.session_state.users[phone]["password"] = p1
@@ -170,7 +190,7 @@ if not st.session_state.logged_in:
         if st.session_state.reg_step == 1:
             reg_phone = st.text_input("Номер телефона", key="reg_phone")
 
-            if st.button("Отправить код", key="reg_send_code"):
+            if st.button("Отправить код"):
                 if reg_phone in st.session_state.users:
                     st.error("Уже зарегистрирован")
                 else:
@@ -181,19 +201,19 @@ if not st.session_state.logged_in:
                         st.session_state.reg_step = 2
 
         elif st.session_state.reg_step == 2:
-            sms = st.text_input("Введите SMS код", key="reg_sms")
+            sms = st.text_input("SMS код")
 
-            if st.button("Проверить", key="reg_verify"):
+            if st.button("Проверить"):
                 if sms == st.session_state.otp:
                     st.session_state.reg_step = 3
                 else:
                     st.error("Неверный код")
 
         elif st.session_state.reg_step == 3:
-            p1 = st.text_input("Пароль", type="password", key="reg_p1")
-            p2 = st.text_input("Повторите пароль", type="password", key="reg_p2")
+            p1 = st.text_input("Пароль", type="password")
+            p2 = st.text_input("Повтор пароля", type="password")
 
-            if st.button("Далее", key="reg_next"):
+            if st.button("Далее"):
                 if p1 == p2:
                     st.session_state.temp_password = p1
                     st.session_state.reg_step = 4
@@ -201,10 +221,10 @@ if not st.session_state.logged_in:
                     st.error("Пароли не совпадают")
 
         elif st.session_state.reg_step == 4:
-            pin1 = st.text_input("PIN", max_chars=4, key="reg_pin1")
-            pin2 = st.text_input("Повтор PIN", max_chars=4, key="reg_pin2")
+            pin1 = st.text_input("PIN", max_chars=4)
+            pin2 = st.text_input("Повтор PIN", max_chars=4)
 
-            if st.button("Создать аккаунт", key="reg_create"):
+            if st.button("Создать аккаунт"):
                 if pin1 == pin2 and len(pin1) == 4:
                     st.session_state.users[st.session_state.temp_phone] = {
                         "password": st.session_state.temp_password,
@@ -225,76 +245,52 @@ else:
 
     user = st.session_state.users[st.session_state.phone]
 
-    # REGION
-    st.sidebar.markdown("### 🌍 Регион")
+    # REGION SAFE
+    default_region = st.session_state.region if st.session_state.region in KZ_REGIONS else "Алматы"
+
     region = st.sidebar.selectbox(
-        "Выберите регион",
+        "Регион",
         KZ_REGIONS,
-        index=KZ_REGIONS.index(st.session_state.region),
-        key="region_select"
+        index=KZ_REGIONS.index(default_region)
     )
     st.session_state.region = region
 
-    # MENU
     menu = st.sidebar.selectbox(
         "Меню",
-        ["Маршруты", "Профиль", "Карта", "История"],
-        index=0,
-        key="menu_select"
+        ["Маршруты", "Профиль", "Карта", "История"]
     )
 
-    # ================= ROUTES (MAIN SCREEN)
     if menu == "Маршруты":
 
         st.title(f"🚌 Маршруты — {region}")
 
-        region_routes = {
+        routes = {
             "Межобластной": [f"{region} — Область {i}" for i in range(1, 4)],
             "Междугородний": [f"{region} — Город {i}" for i in range(1, 4)],
             "Городской": [str(random.randint(1, 150)) for _ in range(5)],
             "Внутрирайонный": [f"{region[:2]}-{i}" for i in range(1, 4)]
         }
 
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "🚍 Межобластной",
-            "🏙️ Междугородний",
-            "🚌 Городской",
-            "🚐 Внутрирайонный"
-        ])
+        tabs = st.tabs(["🚍 Межобластной", "🏙️ Междугородний", "🚌 Городской", "🚐 Внутрирайонный"])
 
-        with tab1:
-            for r in region_routes["Межобластной"]:
-                st.write("🚍", r)
+        for i, key in enumerate(routes):
+            with tabs[i]:
+                for r in routes[key]:
+                    st.write(r)
 
-        with tab2:
-            for r in region_routes["Междугородний"]:
-                st.write("🏙️", r)
-
-        with tab3:
-            for r in region_routes["Городской"]:
-                st.write("🚌 Маршрут", r)
-
-        with tab4:
-            for r in region_routes["Внутрирайонный"]:
-                st.write("🚐", r)
-
-    # ================= PROFILE
     elif menu == "Профиль":
         st.title("👤 Профиль")
         st.metric("Баланс", f"{user['balance']} ₸")
 
-    # ================= MAP
     elif menu == "Карта":
-        st.title(f"🗺️ Карта — {region}")
+        st.title("🗺️ Карта")
         st.info("Скоро будет 🚧")
 
-    # ================= HISTORY
     elif menu == "История":
         st.title("📜 История")
         for h in user.get("history", []):
             st.write("•", h)
 
-    # LOGOUT
-    if st.sidebar.button("Выйти", key="logout_btn"):
+    if st.sidebar.button("Выйти"):
         st.session_state.logged_in = False
         st.rerun()
