@@ -3,7 +3,10 @@ import random
 import json
 import os
 from twilio.rest import Client
-from Twilio2 import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+import streamlit as st
+
+TWILIO_ACCOUNT_SID = st.secrets["TWILIO_ACCOUNT_SID"]
+TWILIO_AUTH_TOKEN = st.secrets["TWILIO_AUTH_TOKEN"]
 
 # =========================
 # REGIONS
